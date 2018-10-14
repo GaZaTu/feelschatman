@@ -5,7 +5,7 @@ export interface EmoteInfo {
   kind: "twitch" | "ffz" | "bttv"
   indexes: [number, number][]
   uri: string
-  data: any
+  base64: string
   height: number
   width: number
 }
@@ -22,6 +22,8 @@ export interface ChatMsgRequest extends MsgRequest {
   emotes?: EmoteIndexInfo[]
   msgItemMap?: Map<number, string | EmoteInfo>
   msgItems?: (string | EmoteInfo)[]
+  displayNameWithColon?: string
+  pinged?: boolean
 }
 
 export interface FFZEmote {

@@ -39,8 +39,8 @@ export function handleTwitchEmotes(req: ChatMsgRequest) {
       id: emoteId,
       kind: "twitch",
       indexes: [],
-      uri: `http://static-cdn.jtvnw.net/emoticons/v1/${emoteId}/3.0`,
-      data: null,
+      uri: `http://static-cdn.jtvnw.net/emoticons/v1/${emoteId}/1.0`,
+      base64: "",
       width: 20,
       height: 20,
     }
@@ -97,8 +97,8 @@ export function createFfzEmotes(ffzEmotes: Map<string, FFZEmote>) {
             id: String(emote.id),
             kind: "ffz",
             indexes: [],
-            uri: `https:${emote.urls["4"]}`,
-            data: null,
+            uri: `https:${emote.urls["1"]}`,
+            base64: "",
             width: emote.width,
             height: emote.height,
           }
@@ -121,8 +121,8 @@ export function createBttvEmotes(bttvEmotes: Map<string, BTTVEmote>) {
             id: emote.id,
             kind: "bttv",
             indexes: [],
-            uri: `https://cdn.betterttv.net/emote/${emote.id}/3x`,
-            data: null,
+            uri: `https://cdn.betterttv.net/emote/${emote.id}/1x`,
+            base64: "",
             width: 20,
             height: 20,
           }
@@ -130,4 +130,19 @@ export function createBttvEmotes(bttvEmotes: Map<string, BTTVEmote>) {
       }
     }
   }
+}
+
+export function reduceNeededReactElements(req: ChatMsgRequest) {
+  const newMsgItems = [] as typeof req.msgItems
+
+  for (const item of req.msgItems) {
+    if (typeof item === "string" && newMsgItems.length > 0 && typeof newMsgItems[newMsgItems.length - 1] === "string") {
+      newMsgItems[newMsgItems.length - 1] += " " + item
+    } else {
+      newMsgItems.push(item)
+    }
+  }
+
+  req.msgItems = newMsgItems
+  req.displayNameWithColon = req.isAction ? req.usr : req.usr + ":"
 }
