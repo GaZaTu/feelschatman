@@ -16,6 +16,7 @@
     "noImplicitReturns": true,
     "noImplicitThis": true,
     "skipLibCheck": true,
+    "strict": true,
     "moduleResolution": "node"
   },
   "filesGlob": [

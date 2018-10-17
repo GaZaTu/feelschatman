@@ -133,7 +133,11 @@ export function createBttvEmotes(bttvEmotes: Map<string, BTTVEmote>) {
 }
 
 export function reduceNeededReactElements(req: ChatMsgRequest) {
-  const newMsgItems = [] as typeof req.msgItems
+  if (!req.msgItems) {
+    return
+  }
+  
+  const newMsgItems = [] as (string | EmoteInfo)[]
 
   for (const item of req.msgItems) {
     if (typeof item === "string" && newMsgItems.length > 0 && typeof newMsgItems[newMsgItems.length - 1] === "string") {
