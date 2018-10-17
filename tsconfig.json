@@ -3,16 +3,14 @@
     "module": "es2015",
     "target": "es2015",
     "jsx": "react",
-    "rootDir": "src",
-    "outDir": "build",
+    "rootDir": "ts",
+    "outDir": "js",
     "allowSyntheticDefaultImports": true,
     "noImplicitAny": true,
     "sourceMap": true,
     "experimentalDecorators": true,
     "preserveConstEnums": true,
     "allowJs": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
     "noImplicitReturns": true,
     "noImplicitThis": true,
     "skipLibCheck": true,
@@ -34,7 +32,9 @@
     "build",
     "node_modules",
     "jest.config.js",
-    "App.js"
+    "App.js",
+    "index.js",
+    "js"
   ],
   "compileOnSave": false
 }

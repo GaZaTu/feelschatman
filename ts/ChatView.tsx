@@ -1,48 +1,12 @@
 import * as React from "react";
-import { StyleSheet, Text, TextStyle, View, ViewStyle, Image, FlatList, TextInput, KeyboardAvoidingView } from "react-native";
+import { StyleSheet, Text, TextStyle, View, ViewStyle, FlatList, TextInput, KeyboardAvoidingView } from "react-native";
+import FastImage from "react-native-fast-image";
 import { IrcClient } from "./lib/twitch/irc";
 import { websocketConnectorFactory } from "./lib/twitch/ws";
-import { ChatMsgRequest, FFZEmote, BTTVEmote, FFZRoomResponse, BTTVRoomResponse, EmoteInfo } from "./interfaces";
+import { ChatMsgRequest, FFZEmote, BTTVEmote, FFZRoomResponse, BTTVRoomResponse } from "./interfaces";
 import { handleActionMsg, createMsgItemMap, handleTwitchEmotes, setTwitchEmotesInMsgItemsMap, createMsgItems, createFfzEmotes, createBttvEmotes, reduceNeededReactElements } from "./pipes";
 import { filter, tap } from "rxjs/operators";
 import { Watch } from "./utils";
-
-function loadImageAsBase64(uri: string) {
-  return fetch(uri)
-    .then(res => res.blob())
-    .then(blob => {
-      return new Promise<string>(resolve => {
-        const reader = new FileReader()
-
-        reader.readAsDataURL(blob)
-        reader.onloadend = () => resolve(reader.result as any)
-      })
-    })
-}
-
-const imageCache = new Map<string, string>()
-
-function loadImageWithCache(uri: string) {
-  const image = imageCache.get(uri)
-
-  if (image) {
-    return Promise.resolve(image)
-  } else {
-    return loadImageAsBase64(uri).then(base64 => {
-      imageCache.set(uri, base64)
-
-      return base64
-    })
-  }
-}
-
-function loadBase64DataOfEmotes(req: ChatMsgRequest) {
-  return Promise.all(
-    req.msgItems!
-      .filter(item => typeof item === "object" && item.base64.length === 0)
-      .map(item => loadImageWithCache((item as EmoteInfo).uri))
-  )
-}
 
 interface Props {
   channel: string
@@ -116,7 +80,7 @@ export default class ChatView extends React.PureComponent<Props, State> {
     this.ffzEmotes.clear()
     this.bttvEmotes.clear()
 
-    await fetch(`https://api.frankerfacez.com/v1/room/${channel}`)
+    fetch(`https://api.frankerfacez.com/v1/room/${channel}`)
       .then(res => res.json() as Promise<FFZRoomResponse>)
       .then(json => {
         for (const emote of json.sets[Object.keys(json.sets)[0]].emoticons) {
@@ -124,7 +88,7 @@ export default class ChatView extends React.PureComponent<Props, State> {
         }
       })
 
-    await fetch(`https://api.betterttv.net/2/channels/${channel}`)
+    fetch(`https://api.betterttv.net/2/channels/${channel}`)
       .then(res => res.json() as Promise<BTTVRoomResponse>)
       .then(json => {
         for (const emote of json.emotes) {
@@ -132,7 +96,7 @@ export default class ChatView extends React.PureComponent<Props, State> {
         }
       })
 
-    await fetch(`https://api.betterttv.net/2/emotes`)
+    fetch(`https://api.betterttv.net/2/emotes`)
       .then(res => res.json() as Promise<BTTVRoomResponse>)
       .then(json => {
         for (const emote of json.emotes) {
@@ -166,17 +130,9 @@ export default class ChatView extends React.PureComponent<Props, State> {
       tap(reduceNeededReactElements),
     ))
   async onMessage(req: ChatMsgRequest) {
-    try {
-      await loadBase64DataOfEmotes(req)
-    } catch (err) {
-      console.log("failed to load image", err)
-    }
-
-    // req.emoteInfos = undefined
-    // req.emotes = undefined
-    // req.msgItemMap = undefined
-
-    // req.msgItems = [req.msg]
+    req.emoteInfos = undefined
+    req.emotes = undefined
+    req.msgItemMap = undefined
 
     // req.pinged = req.msg.includes("")
 
@@ -188,7 +144,7 @@ export default class ChatView extends React.PureComponent<Props, State> {
   }
 
   sendMessage() {
-    this.irc.send("forsen", this.state.messageToSend)
+    this.irc.send(this.props.channel, this.state.messageToSend)
 
     this.setState({
       messageToSend: "",
@@ -203,18 +159,10 @@ class Message extends React.PureComponent<{ msg: ChatMsgRequest }> {
     return (
       <View style={msg.pinged ? [{ backgroundColor: "#cc2123" }, styles.message] : styles.message}>
         <Text style={{ marginRight: 3, color: msg.tags.color as any }}>{msg.displayNameWithColon}</Text>
-        {/* {!props.msg.isAction && <Text style={{ color: "#ffffff" }}>:</Text>} */}
         {msg.msgItems!.map((item, i) =>
           typeof item === "string" ?
             <Text key={i} style={msg.isAction ? [styles.messageItem, { color: msg.tags.color as any }] : styles.messageItem}>{item}</Text> :
-            <Image key={i} style={{ width: item.width, height: item.height, marginLeft: 3, marginRight: 3 }} source={{ uri: item.uri }} />
-          // <View key={i} style={{ flexDirection: "row", flexWrap: "wrap" }}>
-          //   <Text> </Text>
-          //   {typeof item === "string" ?
-          //     <Text style={props.msg.isAction ? [styles.messageItem, { color: props.msg.tags.color as any }] : styles.messageItem}>{item}</Text> :
-          //     <Image style={{ width: item.width, height: item.height }} source={{ uri: item.uri }} />
-          //   }
-          // </View>
+            <FastImage key={i} style={{ width: item.width, height: item.height, marginLeft: 3, marginRight: 3 }} source={{ uri: item.uri }} />
         )}
       </View>
     )
