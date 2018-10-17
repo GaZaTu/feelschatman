@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
   } as TextStyle,
 })
 
-export default class ChatView extends React.Component<Props, State> {
+export default class ChatView extends React.PureComponent<Props, State> {
   irc = new IrcClient(websocketConnectorFactory)
   ffzEmotes = new Map<string, FFZEmote>()
   bttvEmotes = new Map<string, BTTVEmote>()
@@ -196,21 +196,27 @@ export default class ChatView extends React.Component<Props, State> {
   }
 }
 
-const Message = (props: { msg: ChatMsgRequest }) => (
-  <View style={props.msg.pinged ? [{ backgroundColor: "#cc2123" }, styles.message] : styles.message}>
-    <Text style={{ marginRight: 3, color: props.msg.tags.color as any }}>{props.msg.displayNameWithColon}</Text>
-    {/* {!props.msg.isAction && <Text style={{ color: "#ffffff" }}>:</Text>} */}
-    {props.msg.msgItems!.map((item, i) =>
-      typeof item === "string" ?
-        <Text key={i} style={props.msg.isAction ? [styles.messageItem, { color: props.msg.tags.color as any }] : styles.messageItem}>{item}</Text> :
-        <Image key={i} style={{ width: item.width, height: item.height, marginLeft: 3, marginRight: 3 }} source={{ uri: item.uri }} />
-      // <View key={i} style={{ flexDirection: "row", flexWrap: "wrap" }}>
-      //   <Text> </Text>
-      //   {typeof item === "string" ?
-      //     <Text style={props.msg.isAction ? [styles.messageItem, { color: props.msg.tags.color as any }] : styles.messageItem}>{item}</Text> :
-      //     <Image style={{ width: item.width, height: item.height }} source={{ uri: item.uri }} />
-      //   }
-      // </View>
-    )}
-  </View>
-)
+class Message extends React.PureComponent<{ msg: ChatMsgRequest }> {
+  render() {
+    const { msg } = this.props
+
+    return (
+      <View style={msg.pinged ? [{ backgroundColor: "#cc2123" }, styles.message] : styles.message}>
+        <Text style={{ marginRight: 3, color: msg.tags.color as any }}>{msg.displayNameWithColon}</Text>
+        {/* {!props.msg.isAction && <Text style={{ color: "#ffffff" }}>:</Text>} */}
+        {msg.msgItems!.map((item, i) =>
+          typeof item === "string" ?
+            <Text key={i} style={msg.isAction ? [styles.messageItem, { color: msg.tags.color as any }] : styles.messageItem}>{item}</Text> :
+            <Image key={i} style={{ width: item.width, height: item.height, marginLeft: 3, marginRight: 3 }} source={{ uri: item.uri }} />
+          // <View key={i} style={{ flexDirection: "row", flexWrap: "wrap" }}>
+          //   <Text> </Text>
+          //   {typeof item === "string" ?
+          //     <Text style={props.msg.isAction ? [styles.messageItem, { color: props.msg.tags.color as any }] : styles.messageItem}>{item}</Text> :
+          //     <Image style={{ width: item.width, height: item.height }} source={{ uri: item.uri }} />
+          //   }
+          // </View>
+        )}
+      </View>
+    )
+  }
+}
