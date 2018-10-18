@@ -1,5 +1,5 @@
 import * as React from "react";
-import { StyleSheet, Text, TextStyle, View, ViewStyle, FlatList, TextInput, KeyboardAvoidingView } from "react-native";
+import { StyleSheet, Text, TextStyle, View, ViewStyle, FlatList, TextInput, KeyboardAvoidingView, ListRenderItemInfo } from "react-native";
 import FastImage from "react-native-fast-image";
 import { IrcClient } from "./lib/twitch/irc";
 import { websocketConnectorFactory } from "./lib/twitch/ws";
@@ -31,6 +31,13 @@ const styles = StyleSheet.create({
   messageItem: {
     color: "#ffffff",
   } as TextStyle,
+  list: {
+    width: "95%",
+  },
+  input: {
+    width: "95%",
+    color: "#ffffff",
+  },
 })
 
 export default class ChatView extends React.PureComponent<Props, State> {
@@ -55,21 +62,37 @@ export default class ChatView extends React.PureComponent<Props, State> {
     this.irc.close()
   }
 
+  extractMessageKey = (msg: ChatMsgRequest) => {
+    return msg.tags.id
+  }
+
+  renderMessage = (itemInfo: ListRenderItemInfo<ChatMsgRequest>) => {
+    return (<Message msg={itemInfo.item} />)
+  }
+
+  onMessageChange = (messageToSend: string) => {
+    this.setState({ messageToSend })
+  }
+
+  onMessageSubmit = () => {
+    this.sendMessage()
+  }
+
   render() {
     return (
       <KeyboardAvoidingView style={styles.container} behavior="padding">
         <FlatList
           inverted
-          style={{ width: "95%" }}
+          style={styles.list}
           data={this.state.messages}
-          keyExtractor={msg => msg.tags.id}
-          renderItem={itemInfo => (<Message msg={itemInfo.item} />)} />
+          keyExtractor={this.extractMessageKey}
+          renderItem={this.renderMessage} />
 
         <TextInput
-          style={{ width: "95%", color: "#ffffff" }}
+          style={styles.input}
           value={this.state.messageToSend}
-          onChangeText={messageToSend => this.setState({ messageToSend })}
-          onSubmitEditing={() => this.sendMessage()} />
+          onChangeText={this.onMessageChange}
+          onSubmitEditing={this.onMessageSubmit} />
       </KeyboardAvoidingView>
     )
   }
@@ -152,7 +175,11 @@ export default class ChatView extends React.PureComponent<Props, State> {
   }
 }
 
-class Message extends React.PureComponent<{ msg: ChatMsgRequest }> {
+class Message extends React.Component<{ msg: ChatMsgRequest }> {
+  shouldComponentUpdate() {
+    return false
+  }
+
   render() {
     const { msg } = this.props
 

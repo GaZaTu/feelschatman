@@ -2,6 +2,7 @@
   "name": "feelschatman",
   "version": "0.0.1",
   "scripts": {
+    "start:android:emulator": "emulator -avd feelschatman",
     "start:android": "react-native run-android",
     "tsc-watch": "tsc --watch"
   },
