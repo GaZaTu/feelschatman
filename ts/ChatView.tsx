@@ -40,8 +40,12 @@ const styles = StyleSheet.create({
   },
 })
 
+const global = {
+  irc: new IrcClient(websocketConnectorFactory),
+  connected: false,
+}
+
 export default class ChatView extends React.PureComponent<Props, State> {
-  irc = new IrcClient(websocketConnectorFactory)
   ffzEmotes = new Map<string, FFZEmote>()
   bttvEmotes = new Map<string, BTTVEmote>()
 
@@ -54,12 +58,26 @@ export default class ChatView extends React.PureComponent<Props, State> {
     }
   }
 
-  componentDidMount() {
-    this.irc.reconnect()
+  async componentDidMount() {
+    if (!global.connected) {
+      global.connected = true
+
+      await global.irc.connect()
+      await global.irc.loginAnon()
+
+      await global.irc.reqCap("tags")
+      await global.irc.reqCap("commands")
+      await global.irc.reqCap("membership")
+
+      global.irc.emit("TEST" as any, undefined)
+    }
   }
 
   componentWillUnmount() {
-    this.irc.close()
+    if (global.connected) {
+      global.connected = false
+      global.irc.close()
+    }
   }
 
   extractMessageKey = (msg: ChatMsgRequest) => {
@@ -98,7 +116,7 @@ export default class ChatView extends React.PureComponent<Props, State> {
   }
 
   async join(channel: string) {
-    await this.irc.join(channel)
+    await global.irc.join(channel)
 
     this.ffzEmotes.clear()
     this.bttvEmotes.clear()
@@ -128,21 +146,21 @@ export default class ChatView extends React.PureComponent<Props, State> {
       })
   }
 
-  @Watch((self: ChatView) => self.irc.on("reconnect"))
+  @Watch(() => global.irc.on("TEST" as any))
   async onReconnect() {
-    await this.irc.connect()
-    await this.irc.loginAnon()
+    // await global.irc.connect()
+    // await global.irc.loginAnon()
 
-    await this.irc.reqCap("tags")
-    await this.irc.reqCap("commands")
-    await this.irc.reqCap("membership")
+    // await global.irc.reqCap("tags")
+    // await global.irc.reqCap("commands")
+    // await global.irc.reqCap("membership")
 
     await this.join(this.props.channel)
   }
 
-  @Watch((self: ChatView) => self.irc.on("message")
+  @Watch((self: ChatView) => global.irc.on("message")
     .pipe(
-      filter((_req): _req is ChatMsgRequest => true),
+      filter((req): req is ChatMsgRequest => req.chn === self.props.channel),
       tap(handleActionMsg),
       tap(createMsgItemMap),
       tap(handleTwitchEmotes),
@@ -167,7 +185,7 @@ export default class ChatView extends React.PureComponent<Props, State> {
   }
 
   sendMessage() {
-    this.irc.send(this.props.channel, this.state.messageToSend)
+    global.irc.send(this.props.channel, this.state.messageToSend)
 
     this.setState({
       messageToSend: "",
