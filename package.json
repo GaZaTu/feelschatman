@@ -2,14 +2,14 @@
   "name": "feelschatman",
   "version": "0.0.1",
   "scripts": {
+    "tsc-watch": "tsc --watch",
     "start:android:emulator": "emulator -avd feelschatman",
-    "start:android": "react-native run-android",
-    "tsc-watch": "tsc --watch"
+    "start:android": "react-native run-android"
   },
   "dependencies": {
     "@types/react-navigation": "^2.0.24",
     "react": "16.6.0-alpha.8af6728",
-    "react-native": "0.57.3",
+    "react-native": "^0.57.4",
     "react-native-fast-image": "^5.0.11",
     "react-navigation": "^2.18.0",
     "rxjs": "^6.3.3"
