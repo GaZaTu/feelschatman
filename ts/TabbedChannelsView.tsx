@@ -1,6 +1,6 @@
 import * as React from "react";
-import { StyleSheet, View, Button } from "react-native";
-import ChatView from "./ChatView";
+import { StyleSheet, View, Button, AsyncStorage } from "react-native";
+import ChatView, { chatViewGlobal } from "./ChatView";
 import { createMaterialTopTabNavigator, NavigationRouteConfigMap, NavigationContainer, NavigationScreenProps, NavigationScreenOptions } from "react-navigation";
 
 type Props = NavigationScreenProps
@@ -22,38 +22,17 @@ export default class TabbedChannelsView extends React.PureComponent<Props, State
     super(props)
 
     this.state = {
-      channels: ["forsen", "pajlada"],
+      channels: [],
       newChannel: "",
       Navigation: null,
     }
   }
 
-  createNavigator() {
-    const config = {} as NavigationRouteConfigMap
-
-    for (const channel of this.state.channels) {
-      config[channel] = () => (<ChatView key={channel} channel={channel} />)
-    }
-
-    // config["+"] = () => (
-    //   <View>
-    //     <TextInput value={this.state.newChannel} onChangeText={this.onNewChannelChange} />
-    //     <Button title="Join channel" onPress={() => this.joinChannel()} />
-    //   </View>
-    // )
-
-    this.setState({
-      Navigation: createMaterialTopTabNavigator(config),
-    })
-  }
-
   componentDidMount() {
-    this.createNavigator()
-  }
+    this.load()
 
-  // onNewChannelChange = (newChannel: string) => {
-  //   this.setState({ newChannel })
-  // }
+    chatViewGlobal.resetIrc()
+  }
 
   render() {
     const config = {} as NavigationRouteConfigMap
@@ -61,13 +40,6 @@ export default class TabbedChannelsView extends React.PureComponent<Props, State
     for (const channel of this.state.channels) {
       config[channel] = () => (<ChatView key={channel} channel={channel} />)
     }
-
-    // config["+"] = () => (
-    //   <View>
-    //     <TextInput value={this.state.newChannel} onChangeText={this.onNewChannelChange} />
-    //     <Button title="Join channel" onPress={() => this.joinChannel()} />
-    //   </View>
-    // )
 
     config["+"] = () => (
       <View>
@@ -84,9 +56,19 @@ export default class TabbedChannelsView extends React.PureComponent<Props, State
     )
   }
 
-  // joinChannel() {
-  //   this.setState({
-  //     channels: [...this.state.channels, this.state.newChannel],
-  //   })
-  // }
+  async load() {
+    await Promise.all([
+      this.loadChannels(),
+    ])
+  }
+
+  async loadChannels() {
+    const channels = await AsyncStorage.getItem("settings.channels")
+
+    if (channels) {
+      this.setState({
+        channels: JSON.parse(channels),
+      })
+    }
+  }
 }
