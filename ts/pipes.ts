@@ -1,35 +1,36 @@
-import { ChatMsgRequest, EmoteInfo, EmoteIndexInfo, FFZEmote, BTTVEmote } from "./interfaces";
+import { ChatMessageData, EmoteInfo, EmoteIndexInfo, FFZEmote, BTTVEmote } from "./interfaces";
+import { map } from "rxjs/operators";
+import { PrivmsgEvent } from "./lib/twitch/data";
 
-export function handleActionMsg(req: ChatMsgRequest) {
-  req.isAction = req.msg.startsWith("\x01ACTION")
+function handleIsAction(event: PrivmsgEvent, data: ChatMessageData) {
+  data.isAction = event.msg.startsWith("\x01ACTION")
 
-  if (req.isAction) {
-    req.msg = req.msg.substr("\x01ACTION".length)
+  if (data.isAction) {
+    event.msg = event.msg.substr("\x01ACTION".length)
   }
 }
 
-export function createMsgItemMap(req: ChatMsgRequest) {
-  req.msgItemMap = new Map()
+function populateMsgItemMap(event: PrivmsgEvent, msgItemMap: Map<number, string | EmoteInfo>) {
   let lastIdx = 0
 
-  for (let i = 0; i < req.msg.length - 1; i++) {
-    if (req.msg[i] === " ") {
-      req.msgItemMap.set(lastIdx, req.msg.substring(lastIdx, i))
+  for (let i = 0; i < event.msg.length - 1; i++) {
+    if (event.msg[i] === " ") {
+      msgItemMap.set(lastIdx, event.msg.substring(lastIdx, i))
       lastIdx = i + 1
     }
   }
 
-  req.msgItemMap.set(lastIdx, req.msg.substring(lastIdx))
+  msgItemMap.set(lastIdx, event.msg.substring(lastIdx))
 }
 
-export function handleTwitchEmotes(req: ChatMsgRequest) {
-  if (!req.tags.emotes) {
+function setTwitchEmotesInMsgItemMap(event: PrivmsgEvent, msgItemMap: Map<number, string | EmoteInfo>) {
+  if (!event.tags.emotes) {
     return
   }
 
   const emoteInfos = [] as EmoteInfo[]
   const emoteIndexes = [] as EmoteIndexInfo[]
-  const emoteIdParts = req.tags.emotes.split(/\//g)
+  const emoteIdParts = event.tags.emotes.split(/\//g)
 
   for (const emoteIdPart of emoteIdParts) {
     const colonIdx = emoteIdPart.indexOf(":")
@@ -59,9 +60,7 @@ export function handleTwitchEmotes(req: ChatMsgRequest) {
     emoteInfos.push(emote)
   }
 
-  req.emoteInfos = emoteInfos
-  req.emotes = emoteIndexes
-  req.emotes.sort((a, b) => {
+  emoteIndexes.sort((a, b) => {
     if (a.start < b.start) {
       return -1
     } else if (a.start > b.start) {
@@ -70,30 +69,49 @@ export function handleTwitchEmotes(req: ChatMsgRequest) {
       return 0
     }
   })
-}
 
-export function setTwitchEmotesInMsgItemsMap(req: ChatMsgRequest) {
-  if (req.emotes && req.msgItemMap) {
-    for (const emote of req.emotes) {
-      req.msgItemMap.set(emote.start, emote.data)
-    }
+  for (const emote of emoteIndexes) {
+    msgItemMap.set(emote.start, emote.data)
   }
 }
 
-export function createMsgItems(req: ChatMsgRequest) {
-  req.msgItems = Array.from(req.msgItemMap!.values())
+function handleTwitchEmotes(event: PrivmsgEvent, data: ChatMessageData) {
+  const msgItemMap = new Map<number, string | EmoteInfo>()
+
+  populateMsgItemMap(event, msgItemMap)
+  setTwitchEmotesInMsgItemMap(event, msgItemMap)
+
+  for (const pair of msgItemMap) {
+    data.msgItems.push(pair[1])
+  }
 }
 
-export function createFfzEmotes(ffzEmotes: Map<string, FFZEmote>) {
-  return (req: ChatMsgRequest) => {
-    for (const index in req.msgItems!) {
-      const msgItem = req.msgItems![index]
+export const mapPrivmsgEventToChatMessageData = map<PrivmsgEvent, ChatMessageData>(event => {
+  const data: ChatMessageData = {
+    msgItems: [],
+    displayName: event.tags["display-name"],
+    highlight: false,
+    isAction: false,
+    id: event.tags.id,
+    color: event.tags.color || "#ffffff",
+  }
+
+  handleIsAction(event, data)
+  handleTwitchEmotes(event, data)
+
+  return data
+})
+
+export function setFfzEmotesInChatMessageData(ffzEmotes: Map<string, FFZEmote>) {
+  return (data: ChatMessageData) => {
+    for (const index in data.msgItems) {
+      const msgItem = data.msgItems[index]
 
       if (typeof msgItem === "string") {
         const emote = ffzEmotes.get(msgItem)
 
         if (emote) {
-          req.msgItems![index] = {
+          data.msgItems[index] = {
             id: String(emote.id),
             kind: "ffz",
             indexes: [],
@@ -108,16 +126,16 @@ export function createFfzEmotes(ffzEmotes: Map<string, FFZEmote>) {
   }
 }
 
-export function createBttvEmotes(bttvEmotes: Map<string, BTTVEmote>) {
-  return (req: ChatMsgRequest) => {
-    for (const index in req.msgItems!) {
-      const msgItem = req.msgItems![index]
+export function setBttvEmotesInChatMessageData(bttvEmotes: Map<string, BTTVEmote>) {
+  return (data: ChatMessageData) => {
+    for (const index in data.msgItems) {
+      const msgItem = data.msgItems[index]
 
       if (typeof msgItem === "string") {
         const emote = bttvEmotes.get(msgItem)
 
         if (emote) {
-          req.msgItems![index] = {
+          data.msgItems[index] = {
             id: emote.id,
             kind: "bttv",
             indexes: [],
@@ -132,14 +150,10 @@ export function createBttvEmotes(bttvEmotes: Map<string, BTTVEmote>) {
   }
 }
 
-export function reduceNeededReactElements(req: ChatMsgRequest) {
-  if (!req.msgItems) {
-    return
-  }
-  
+export function reduceNeededReactElementsInChatMessageData(data: ChatMessageData) {
   const newMsgItems = [] as (string | EmoteInfo)[]
 
-  for (const item of req.msgItems) {
+  for (const item of data.msgItems) {
     if (typeof item === "string" && newMsgItems.length > 0 && typeof newMsgItems[newMsgItems.length - 1] === "string") {
       newMsgItems[newMsgItems.length - 1] += " " + item
     } else {
@@ -147,6 +161,6 @@ export function reduceNeededReactElements(req: ChatMsgRequest) {
     }
   }
 
-  req.msgItems = newMsgItems
-  req.displayNameWithColon = req.isAction ? req.usr : req.usr + ":"
+  data.msgItems = newMsgItems
+  data.displayName = data.isAction ? data.displayName : data.displayName + ":"
 }

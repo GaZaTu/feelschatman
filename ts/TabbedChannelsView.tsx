@@ -31,7 +31,7 @@ export default class TabbedChannelsView extends React.PureComponent<Props, State
   componentDidMount() {
     this.load()
 
-    chatViewGlobal.resetIrc()
+    chatViewGlobal.disconnectIrc()
   }
 
   render() {

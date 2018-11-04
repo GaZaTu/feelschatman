@@ -2,11 +2,10 @@ import * as React from "react";
 import { StyleSheet, Text, TextStyle, View, ViewStyle, FlatList, TextInput, KeyboardAvoidingView, ListRenderItemInfo } from "react-native";
 import FastImage from "react-native-fast-image";
 import { IrcClient } from "./lib/twitch/irc";
-import { websocketConnectorFactory } from "./lib/twitch/ws";
-import { ChatMsgRequest, FFZEmote, BTTVEmote, FFZRoomResponse, BTTVRoomResponse } from "./interfaces";
-import { handleActionMsg, createMsgItemMap, handleTwitchEmotes, setTwitchEmotesInMsgItemsMap, createMsgItems, createFfzEmotes, createBttvEmotes, reduceNeededReactElements } from "./pipes";
-import { filter, tap } from "rxjs/operators";
+import { ChatMessageData, FFZEmote, BTTVEmote, FFZRoomResponse, BTTVRoomResponse } from "./interfaces";
 import { Subscription } from "rxjs";
+import { mapPrivmsgEventToChatMessageData, setFfzEmotesInChatMessageData, setBttvEmotesInChatMessageData, reduceNeededReactElementsInChatMessageData } from "./pipes";
+import { tap, filter } from "rxjs/operators";
 
 interface ChatViewData {
   ffzEmotes: Map<string, FFZEmote>
@@ -15,35 +14,35 @@ interface ChatViewData {
 }
 
 export const chatViewGlobal = {
-  irc: new IrcClient(websocketConnectorFactory),
+  irc: new IrcClient(),
   connected: false,
   channels: new Map<string, ChatViewData>(),
 
   async connectIrc() {
     this.connected = true
-
-    await this.irc.connect()
-    await this.irc.loginAnon()
-
-    await this.irc.reqCap("tags")
-    await this.irc.reqCap("commands")
-    await this.irc.reqCap("membership")
-
-    this.irc.emit("TEST" as any, undefined)
+    setTimeout(() => this.irc.connect(), 1000) // TODO: fix this
   },
 
-  async resetIrc() {
+  async disconnectIrc() {
     this.connected = false
-    this.irc = new IrcClient(websocketConnectorFactory)
+    this.irc.disconnect()
   }
 }
+
+chatViewGlobal.irc.on("connect").subscribe(() => {
+  chatViewGlobal.irc.loginAnon()
+
+  chatViewGlobal.irc.reqCap("tags")
+  chatViewGlobal.irc.reqCap("commands")
+  chatViewGlobal.irc.reqCap("membership")
+})
 
 interface Props {
   channel: string
 }
 
 interface State {
-  messages: ChatMsgRequest[]
+  messages: ChatMessageData[]
   messageToSend: string
 }
 
@@ -106,21 +105,23 @@ export default class ChatView extends React.PureComponent<Props, State> {
   componentDidMount() {
     this.setState(this.state)
 
-    this.subscriptions.push(chatViewGlobal.irc.on("message")
-      .pipe(
-        filter((req): req is ChatMsgRequest => req.chn === this.props.channel),
-        tap(handleActionMsg),
-        tap(createMsgItemMap),
-        tap(handleTwitchEmotes),
-        tap(setTwitchEmotesInMsgItemsMap),
-        tap(createMsgItems),
-        tap(createFfzEmotes(this.data.ffzEmotes)),
-        tap(createBttvEmotes(this.data.bttvEmotes)),
-        tap(reduceNeededReactElements),
-      )
-      .subscribe(req => this.onMessage(req)))
+    this.subscriptions.push(
+      chatViewGlobal.irc.on("privmsg")
+        .pipe(
+          filter(event => event.chn === this.props.channel),
+          mapPrivmsgEventToChatMessageData,
+          tap(setFfzEmotesInChatMessageData(this.data.ffzEmotes)),
+          tap(setBttvEmotesInChatMessageData(this.data.bttvEmotes)),
+          tap(reduceNeededReactElementsInChatMessageData),
+        )
+        .subscribe(ev => this.onMessage(ev))
+    )
 
-    this.subscriptions.push(chatViewGlobal.irc.on("TEST" as any).subscribe(() => this.onReconnect()))
+    this.subscriptions.push(
+      chatViewGlobal.irc.on("connect").subscribe(() => {
+        this.onConnect()
+      })
+    )
   }
 
   componentWillUnmount() {
@@ -128,16 +129,25 @@ export default class ChatView extends React.PureComponent<Props, State> {
       sub.unsubscribe()
     }
 
+    this.subscriptions = []
     this.data.state = this.state
   }
 
-  extractMessageKey = (msg: ChatMsgRequest) => {
-    return msg.tags.id
+  keyExtractor = (msg: ChatMessageData) => {
+    return msg.id
   }
 
-  renderMessage = (itemInfo: ListRenderItemInfo<ChatMsgRequest>) => {
+  renderItem = (itemInfo: ListRenderItemInfo<ChatMessageData>) => {
     return (<Message msg={itemInfo.item} />)
   }
+
+  // getItemLayout = (data: ChatMessageData[] | null, index: number) => {
+  //   return {
+  //     length: 100,
+  //     offset: 100,
+  //     index,
+  //   }
+  // }
 
   onMessageChange = (messageToSend: string) => {
     this.setState({ messageToSend })
@@ -154,8 +164,12 @@ export default class ChatView extends React.PureComponent<Props, State> {
           inverted
           style={styles.list}
           data={this.state.messages}
-          keyExtractor={this.extractMessageKey}
-          renderItem={this.renderMessage} />
+          keyExtractor={this.keyExtractor}
+          renderItem={this.renderItem}
+          // getItemLayout={this.getItemLayout}
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={10}
+          updateCellsBatchingPeriod={25} />
 
         <TextInput
           style={styles.input}
@@ -166,8 +180,8 @@ export default class ChatView extends React.PureComponent<Props, State> {
     )
   }
 
-  async join(channel: string) {
-    await chatViewGlobal.irc.join(channel)
+  join(channel: string) {
+    chatViewGlobal.irc.join(channel)
 
     this.data.ffzEmotes.clear()
     this.data.bttvEmotes.clear()
@@ -197,41 +211,13 @@ export default class ChatView extends React.PureComponent<Props, State> {
       })
   }
 
-  // @Watch(() => global.irc.on("TEST" as any))
-  async onReconnect() {
-    // await global.irc.connect()
-    // await global.irc.loginAnon()
-
-    // await global.irc.reqCap("tags")
-    // await global.irc.reqCap("commands")
-    // await global.irc.reqCap("membership")
-
-    await this.join(this.props.channel)
+  onConnect() {
+    this.join(this.props.channel)
   }
 
-  // @Watch((self: ChatView) => global.irc.on("message")
-  //   .pipe(
-  //     filter((req): req is ChatMsgRequest => req.chn === self.props.channel),
-  //     tap(handleActionMsg),
-  //     tap(createMsgItemMap),
-  //     tap(handleTwitchEmotes),
-  //     tap(setTwitchEmotesInMsgItemsMap),
-  //     tap(createMsgItems),
-  //     tap(createFfzEmotes(self.data.ffzEmotes)),
-  //     tap(createBttvEmotes(self.data.bttvEmotes)),
-  //     tap(reduceNeededReactElements),
-  //   ))
-  async onMessage(req: ChatMsgRequest) {
-    req.emoteInfos = undefined
-    req.emotes = undefined
-    req.msgItemMap = undefined
-
-    // req.pinged = req.msg.includes("")
-
-    req.tags.color = req.tags.color || "#ffffff"
-
+  onMessage(msg: ChatMessageData) {
     this.setState({
-      messages: [req, ...this.state.messages.slice(0, 100)],
+      messages: [msg, ...this.state.messages.slice(0, 100)],
     })
   }
 
@@ -244,7 +230,7 @@ export default class ChatView extends React.PureComponent<Props, State> {
   }
 }
 
-class Message extends React.Component<{ msg: ChatMsgRequest }> {
+class Message extends React.Component<{ msg: ChatMessageData }> {
   shouldComponentUpdate() {
     return false
   }
@@ -253,11 +239,11 @@ class Message extends React.Component<{ msg: ChatMsgRequest }> {
     const { msg } = this.props
 
     return (
-      <View style={msg.pinged ? [{ backgroundColor: "#cc2123" }, styles.message] : styles.message}>
-        <Text style={{ marginRight: 3, color: msg.tags.color as any }}>{msg.displayNameWithColon}</Text>
+      <View style={msg.highlight ? [{ backgroundColor: "#cc2123" }, styles.message] : styles.message}>
+        <Text style={{ marginRight: 3, color: msg.color }}>{msg.displayName}</Text>
         {msg.msgItems!.map((item, i) =>
           typeof item === "string" ?
-            <Text key={i} style={msg.isAction ? [styles.messageItem, { color: msg.tags.color as any }] : styles.messageItem}>{item}</Text> :
+            <Text key={i} style={msg.isAction ? [styles.messageItem, { color: msg.color }] : styles.messageItem}>{item}</Text> :
             <FastImage key={i} style={{ width: item.width, height: item.height, marginLeft: 3, marginRight: 3 }} source={{ uri: item.uri }} />
         )}
       </View>

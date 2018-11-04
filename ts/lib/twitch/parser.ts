@@ -1,120 +1,84 @@
-import * as intf from "./interfaces"
-import { MsgRequest } from "./request"
-import { IrcClient } from "./irc"
+import { map } from "rxjs/operators";
+import { Tags, PrivmsgTags, PrivmsgEvent, IrcEvent, UnknownEvent, PingEvent, ReconnectEvent } from "./data";
 
-const tagParserRegex = /^@(.*?) :/
-const privmsgRegex = /@(\w+).tmi.twitch.tv PRIVMSG #(\w+) :(.*)/
-const clearchatRegex = /CLEARCHAT #(\w+) :(\w+)/
-const usernoticeRegex = /USERNOTICE #(\w+)(?: :(.*)|)/
-const userstateRegex = /USERSTATE #(\w+)/
-const roomstateRegex = /ROOMSTATE #(\w+)/
-const pingRegex = /PING :(.*)/
-const reconnectRegex = /RECONNECT/
-const namesRegex = /:(\w+).tmi.twitch.tv 353 (\w+) = #(\w+) :(.*)/
-const joinRegex = /@(\w+).tmi.twitch.tv JOIN #(\w+)/
-const partRegex = /@(\w+).tmi.twitch.tv PART #(\w+)/
+function parseTags(line: string): [string, Tags] {
+  const tags = {} as Tags
 
-function parseTags(line: string) {
-  const tags = {} as intf.Tags
-  const match = tagParserRegex.exec(line)
+  if (line.startsWith("@")) {
+    let key = ""
+    let lastI = 1
 
-  if (match) {
-    const rawTags = match[1].split(";")
+    for (let i = lastI; i < line.length - 1; i++) {
+      switch (line[i]) {
+        case "=":
+          key = line.slice(lastI, i)
+          lastI = i + 1
+          break
 
-    for (const rawTag of rawTags) {
-      const keyval = rawTag.split("=")
-      const key = keyval[0]
-      const val = keyval[1]
-      const valAsNumber = Number(val)
-
-      if (isNaN(valAsNumber)) {
-        tags[key] = val.replace(/\\s/g, " ")
-      } else {
-        tags[key] = valAsNumber
+        case ";":
+          tags[key] = line.slice(lastI, i)
+          lastI = i + 1
+          break
+        
+        case " ":
+          tags[key] = line.slice(lastI, i)
+          lastI = i + 1
+          
+          return [line.slice(lastI), tags]
       }
     }
-
-    return {
-      tags: tags,
-      line: line.substr(tagParserRegex.lastIndex),
-    }
-  } else {
-    return {
-      tags: tags,
-      line: line,
-    }
   }
+
+  return [line, tags]
 }
 
-interface Parser {
-  regex: RegExp
-  emit(bot: IrcClient, line: string, tags: intf.Tags, match: RegExpExecArray): void
-}
+type ParserFn = (line: string, tags: Tags) => IrcEvent | null
 
-const parsers: Parser[] = [
-  {
-    regex: clearchatRegex,
-    emit: (bot, _1, tags, match) => bot.emit("clearchat", [match[1], match[2], tags as any]),
+const parsers: ParserFn[] = [
+  (line: string, tags: PrivmsgTags) => {
+    const regex = /:(\w+)!\w+@\S+ PRIVMSG #(\w+) :/
+    const match = regex.exec(line)
+
+    if (match) {
+      return new PrivmsgEvent(
+        match[1],
+        match[2],
+        line.slice(match[0].length, -2),
+        tags,
+      )
+    } else {
+      return null
+    }
   },
-  {
-    regex: joinRegex,
-    emit: (bot, _1, _2, match) => bot.emit("join", [match[2], match[1]]),
+  (line: string) => {
+    const regex = /PING :(.*)/
+    const match = regex.exec(line)
+
+    if (match) {
+      return new PingEvent(match[1])
+    } else {
+      return null
+    }
   },
-  {
-    regex: partRegex,
-    emit: (bot, _1, _2, match) => bot.emit("part", [match[2], match[1]]),
-  },
-  {
-    regex: usernoticeRegex,
-    emit: (bot, _1, tags, match) => bot.emit("usernotice", [match[1], match[2], tags as any]),
-  },
-  {
-    regex: userstateRegex,
-    emit: (bot, _1, tags, match) => bot.emit("userstate", [match[1], tags as any]),
-  },
-  {
-    regex: roomstateRegex,
-    emit: (bot, _1, tags, match) => bot.emit("roomstate", [match[1], tags as any]),
-  },
-  {
-    regex: pingRegex,
-    emit: (bot, _1, _2, match) => bot.emit("ping", match[1]),
-  },
-  {
-    regex: reconnectRegex,
-    emit: (bot, _1, _2, _3) => bot.emit("reconnect", undefined),
-  },
-  {
-    regex: namesRegex,
-    emit: (bot, _1, _2, match) => bot.emit("names", [match[3], match[4].split(" ")]),
+  (line: string) => {
+    if (line.includes("RECONNECT")) {
+      return new ReconnectEvent()
+    } else {
+      return null
+    }
   },
 ]
 
-export async function handleLine(bot: IrcClient, line: string) {
-  bot.emit("log", `<<< ${line}`)
-
-  const parsed = parseTags(line)
-  let match = privmsgRegex.exec(parsed.line)
-
-  if (match) {
-    const req = new MsgRequest(bot, match[1], match[2], match[3], parsed.tags)
-
-    bot.emit("message", req)
-
-    return
-  }
-
-  bot.emit("log2", `<<< ${line}`)
+export const mapLineToIrcEvent = map<string, IrcEvent>(line_ => {
+  const [line, tags] = parseTags(line_)
 
   for (const parser of parsers) {
-    const match = parser.regex.exec(parsed.line)
+    const result = parser(line, tags)
 
-    if (match) {
-      parser.emit(bot, parsed.line, parsed.tags, match)
-
-      return
+    if (result) {
+      return result
     }
   }
 
-  bot.emit("unknown", line)
-}
+  return new UnknownEvent(line, tags)
+})

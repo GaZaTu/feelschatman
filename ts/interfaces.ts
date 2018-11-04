@@ -1,4 +1,4 @@
-import { MsgRequest } from "./lib/twitch";
+import { PrivmsgEvent } from "./lib/twitch/data";
 
 export interface EmoteInfo {
   id: string
@@ -16,14 +16,13 @@ export interface EmoteIndexInfo {
   data: EmoteInfo
 }
 
-export interface ChatMsgRequest extends MsgRequest {
-  isAction?: boolean
-  emoteInfos?: EmoteInfo[]
-  emotes?: EmoteIndexInfo[]
-  msgItemMap?: Map<number, string | EmoteInfo>
-  msgItems?: (string | EmoteInfo)[]
-  displayNameWithColon?: string
-  pinged?: boolean
+export interface ChatMessageData {
+  msgItems: (string | EmoteInfo)[]
+  displayName: string
+  highlight: boolean
+  isAction: boolean
+  id: string
+  color: string
 }
 
 export interface FFZEmote {
